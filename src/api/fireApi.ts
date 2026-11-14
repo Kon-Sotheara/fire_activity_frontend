@@ -5,6 +5,14 @@ const apiBase = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000/api";
 type Filters = { startDate: string; endDate: string; mode: DataMode; mapLayer: MapLayer; daynight: "D" | "N" | null; bounds: MapBounds | null };
 type ActivityPoint = { period: string; activity: number };
 type CalendarCell = { year: number; period: number; activity: number };
+export type RiskPrediction = {
+  type: "FeatureCollection";
+  features: Array<{
+    type: "Feature";
+    properties: { grid_id: string; prediction_date: string; horizon_days: number; probability: number; risk_level: "Low" | "Medium" | "High"; fire_count_7d: number };
+    geometry: { type: "Polygon"; coordinates: number[][][] };
+  }>;
+};
 
 function searchParams(filters: Filters, includeDates = true) {
   const params = new URLSearchParams({ sensor: filters.mode });
@@ -24,6 +32,10 @@ async function getJson<T>(path: string): Promise<T> {
   const response = await fetch(`${apiBase}${path}`);
   if (!response.ok) throw new Error(`API request failed (${response.status})`);
   return response.json() as Promise<T>;
+}
+
+export function loadRiskPrediction() {
+  return getJson<RiskPrediction>("/predictions/fire-risk");
 }
 
 function toMonthLabel(period: string) {

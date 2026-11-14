@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import ReactECharts from "echarts-for-react";
 
 import type { DashboardData, DataMode } from "../types/dashboard";
+import type { RiskPrediction } from "../api/fireApi";
 
 const modeLabel = { modis: "Raw MODIS", viirs: "Raw VIIRS", harmonized: "Combined sources" };
 const modeColor = { modis: "#2563EB", viirs: "#0D9488", harmonized: "#EA580C" };
@@ -90,6 +91,25 @@ export function HarmonizationEvidenceChart({ data }: { data: DashboardData }) {
     ],
   };
   return <ReactECharts option={option} style={{ height: 230, width: "100%" }} notMerge lazyUpdate />;
+}
+
+export function RiskDistributionChart({ prediction }: { prediction: RiskPrediction | null }) {
+  const levels = ["Low", "Medium", "High"] as const;
+  const stats = levels.map((level) => {
+    const cells = prediction?.features.filter((feature) => feature.properties.risk_level === level) ?? [];
+    const averageProbability = cells.length ? cells.reduce((sum, cell) => sum + cell.properties.probability, 0) / cells.length : 0;
+    return { level, count: cells.length, averageProbability };
+  });
+  if (!stats.some((stat) => stat.count > 0)) return <NoObservations height={230} />;
+  const option = {
+    color: ["#eab308", "#f97316", "#dc2626"],
+    tooltip: { trigger: "axis", formatter: (items: Array<{ dataIndex: number; value: number }>) => { const stat = stats[items[0].dataIndex]; return `<b>${stat.level} risk</b><br/>Grid cells: ${stat.count}<br/>Average probability: ${(stat.averageProbability * 100).toFixed(1)}%`; } },
+    grid: { top: 24, right: 18, bottom: 38, left: 48 },
+    xAxis: { type: "category", data: levels, axisLabel: { color: "#64748b" }, axisLine: { lineStyle: { color: "#cbd5e1" } } },
+    yAxis: { type: "value", name: "Grid cells", nameTextStyle: { color: "#64748b" }, splitLine: { lineStyle: { color: "#e2e8f0" } } },
+    series: [{ name: "Risk cells", type: "bar", barMaxWidth: 56, data: stats.map((stat, index) => ({ value: stat.count, itemStyle: { color: ["#eab308", "#f97316", "#dc2626"][index], borderRadius: [5, 5, 0, 0] } })) }],
+  };
+  return <ReactECharts option={option} style={{ height: 250, width: "100%" }} notMerge lazyUpdate />;
 }
 
 export function RegionalComparisonChart({ region }: { region: string }) {

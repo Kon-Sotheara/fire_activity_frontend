@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { BellRing, CalendarDays, Download, Flame, MapPinned } from "lucide-react";
+import { ArrowLeft, BellRing, CalendarDays, Download, Flame, MapPinned } from "lucide-react";
 
-import { exportUrl, loadDashboardData } from "../api/fireApi";
+import { exportUrl, loadDashboardData, loadRiskPrediction } from "../api/fireApi";
+import type { RiskPrediction } from "../api/fireApi";
 import { dashboardMock } from "../mocks/dashboard";
 import type { DataMode, MapBounds, MapLayer } from "../types/dashboard";
-import { ActivityVisualization, HarmonizationEvidenceChart, MonthlyCalendar, RegionalComparisonChart, SameMonthComparison, SeasonalChart } from "./ActivityCharts";
+import { ActivityVisualization, HarmonizationEvidenceChart, MonthlyCalendar, RegionalComparisonChart, RiskDistributionChart, SameMonthComparison, SeasonalChart } from "./ActivityCharts";
 import { FireMap } from "./FireMap";
 import "./dashboard.css";
 
@@ -24,6 +25,8 @@ export function DashboardPage() {
   const [daynight, setDaynight] = useState<"D" | "N" | null>(null);
   const [comparisonMonth, setComparisonMonth] = useState(2);
   const [bounds, setBounds] = useState<MapBounds | null>(null);
+  const [showRiskLayer, setShowRiskLayer] = useState(false);
+  const [riskPrediction, setRiskPrediction] = useState<RiskPrediction | null>(null);
   const [data, setData] = useState(dashboardMock);
   const [apiStatus, setApiStatus] = useState<"loading" | "connected" | "error">("loading");
   const [apiError, setApiError] = useState("");
@@ -50,6 +53,10 @@ export function DashboardPage() {
     return () => { cancelled = true; };
   }, [filters]);
 
+  useEffect(() => {
+    loadRiskPrediction().then(setRiskPrediction).catch(() => setRiskPrediction(null));
+  }, []);
+
   function downloadCsv(kind: "hotspots" | "statistics") {
     window.open(exportUrl(kind, filters), "_blank", "noopener,noreferrer");
   }
@@ -58,12 +65,30 @@ export function DashboardPage() {
   const anomalyPercent = data.summary.anomalyPercent;
   const selectedLayerCount = mapLayer === "events" ? data.summary.harmonizedActivity : mapLayer === "modis" ? data.sensorComparison.modis : mapLayer === "viirs" ? data.sensorComparison.viirs : data.sensorComparison.combined;
   const selectedLayerDetail = mapLayer === "events" ? "Nearby same-day detections grouped into unique fires" : mapLayer === "modis" ? "1 km sensor · raw observations" : mapLayer === "viirs" ? "375 m sensor · raw observations" : "MODIS + VIIRS · raw observations";
+  const visibleRiskPrediction = useMemo(() => {
+    if (!riskPrediction || !bounds) return riskPrediction;
+    return {
+      ...riskPrediction,
+      features: riskPrediction.features.filter((feature) => {
+        const ring = feature.geometry.coordinates[0];
+        const longitude = (ring[0][0] + ring[2][0]) / 2;
+        const latitude = (ring[0][1] + ring[2][1]) / 2;
+        return latitude >= bounds.minLat && latitude <= bounds.maxLat && longitude >= bounds.minLng && longitude <= bounds.maxLng;
+      }),
+    };
+  }, [bounds, riskPrediction]);
+  const riskCounts = useMemo(() => ({
+    high: visibleRiskPrediction?.features.filter((feature) => feature.properties.risk_level === "High").length ?? 0,
+    medium: visibleRiskPrediction?.features.filter((feature) => feature.properties.risk_level === "Medium").length ?? 0,
+    low: visibleRiskPrediction?.features.filter((feature) => feature.properties.risk_level === "Low").length ?? 0,
+  }), [visibleRiskPrediction]);
 
   return (
-    <main className="dashboard dashboard--compact">
+    <main className={`dashboard dashboard--compact ${showRiskLayer ? "dashboard--risk" : ""}`}>
       <header className="dashboard__header">
         <div className="brand"><span><Flame size={18} /></span> Burn Calendar</div>
         <div className="header-actions">
+          <a className="download-button download-button--secondary" href="#/"><ArrowLeft size={15} /> Back to home</a>
           <button className="download-button download-button--secondary" type="button" onClick={() => downloadCsv("statistics")}><Download size={15} /> Statistics</button>
           <button className="download-button" type="button" onClick={() => downloadCsv("hotspots")}><Download size={15} /> Hotspots CSV</button>
         </div>
@@ -72,23 +97,22 @@ export function DashboardPage() {
       <section className="dashboard__content">
         <div className="compact-intro">
           <div><p className="eyebrow">Historical fire activity</p><h1>Explore MODIS and VIIRS fire records.</h1></div>
-          <span className={`mock-badge mock-badge--${apiStatus}`}>{apiStatus === "connected" ? "Live PostgreSQL data" : apiStatus === "loading" ? "Loading data…" : "API unavailable"}</span>
         </div>
         {apiStatus === "error" && <p className="api-error">The dashboard is showing its last result. {apiError}</p>}
 
         <section className="area-toolbar" aria-label="Fire activity filters">
           <label>From<input type="date" value={startDate} max={endDate} onChange={(event) => setStartDate(event.target.value)} /></label>
           <label>To<input type="date" value={endDate} min={startDate} onChange={(event) => setEndDate(event.target.value)} /></label>
-          <label>Map layer<select aria-label="Map layer" value={mapLayer} onChange={(event) => setMapLayer(event.target.value as MapLayer)}><option value="events">Harmonized fire events</option><option value="modis">MODIS observations</option><option value="viirs">VIIRS observations</option><option value="combined">Combined observations</option></select></label>
           <label>Observation time<select aria-label="Observation time" disabled={mapLayer === "events"} value={daynight ?? ""} onChange={(event) => setDaynight(event.target.value === "" ? null : event.target.value as "D" | "N")}><option value="">Day and night</option><option value="D">Day</option><option value="N">Night</option></select></label>
+          <label>Map layer<select aria-label="Map layer" value={mapLayer} onChange={(event) => setMapLayer(event.target.value as MapLayer)}><option value="events">Harmonized fire events</option><option value="modis">MODIS observations</option><option value="viirs">VIIRS observations</option><option value="combined">Combined observations</option></select></label>
+          <label>Prediction<select aria-label="Prediction layer" value={showRiskLayer ? "risk" : "off"} onChange={(event) => setShowRiskLayer(event.target.value === "risk")}><option value="off">No prediction layer</option><option value="risk">3-day fire-risk snapshot</option></select></label>
         </section>
 
         <section className="workspace-grid">
-          <article className="panel panel--map"><PanelTitle icon={<MapPinned size={18} />} title={`Cambodia ${mapLayerLabels[mapLayer]}`} subtitle={mapLayer === "events" ? "One marker represents a clustered same-day fire event. Drag on the map to filter an area." : "One marker represents a raw satellite observation. Drag on the map to filter an area."} /><FireMap hotspots={data.hotspots} layer={mapLayer} selectedBounds={bounds} onBoundsChange={setBounds} /></article>
+          <article className="panel panel--map"><PanelTitle icon={<MapPinned size={18} />} title={showRiskLayer ? "Cambodia predicted fire risk" : `Cambodia ${mapLayerLabels[mapLayer]}`} subtitle={showRiskLayer ? bounds ? "3-day risk grid filtered to the selected map area." : "3-day forecast snapshot shown as 0.1° risk grid cells; raw sensor points are hidden." : mapLayer === "events" ? "One marker represents a clustered same-day fire event. Drag on the map to filter an area." : "One marker represents a raw satellite observation. Drag on the map to filter an area."} /><FireMap hotspots={data.hotspots} layer={mapLayer} riskPrediction={visibleRiskPrediction} showRiskLayer={showRiskLayer} selectedBounds={bounds} onBoundsChange={setBounds} /></article>
           <article className="panel fire-activity-panel">
-            <div className="panel__title panel__title--controls"><div><h2><Flame size={18} />Fire activity</h2><p>Observation counts for the selected period and area.</p></div><div className="segment-control"><button className={timeView === "week" ? "is-active" : ""} type="button" onClick={() => setTimeView("week")}>Week</button><button className={timeView === "year" ? "is-active" : ""} type="button" onClick={() => setTimeView("year")}>Year</button></div></div>
-            <div className="sensor-comparison"><ObservationCard mode={mode} value={selectedLayerCount} label={mapLayer === "events" ? "Unique fire events" : mapLayerLabels[mapLayer]} detail={selectedLayerDetail} /></div>
-            <ActivityVisualization data={data} mode={mode} timeView={timeView} scale={1} />
+            <div className="panel__title panel__title--controls"><div><h2><Flame size={18} />{showRiskLayer ? "Predicted fire risk" : "Fire activity"}</h2><p>{showRiskLayer ? "Number of 0.1° grid cells by forecast risk level." : "Observation counts for the selected period and area."}</p></div>{!showRiskLayer && <div className="segment-control"><button className={timeView === "week" ? "is-active" : ""} type="button" onClick={() => setTimeView("week")}>Week</button><button className={timeView === "year" ? "is-active" : ""} type="button" onClick={() => setTimeView("year")}>Year</button></div>}</div>
+            {showRiskLayer ? <><div className="risk-summary"><RiskCard level="High" value={riskCounts.high} detail={bounds ? "Selected map area" : "Cambodia-wide snapshot"} /><RiskCard level="Medium" value={riskCounts.medium} detail={bounds ? "Selected map area" : "Cambodia-wide snapshot"} /><RiskCard level="Low" value={riskCounts.low} detail={bounds ? "Selected map area" : "Cambodia-wide snapshot"} /></div><div className="risk-chart"><h3>Risk distribution</h3><p>Grid-cell count by forecast level. Hover for average predicted probability.</p><RiskDistributionChart prediction={visibleRiskPrediction} /></div></> : <><div className="sensor-comparison"><ObservationCard mode={mode} value={selectedLayerCount} label={mapLayer === "events" ? "Unique fire events" : mapLayerLabels[mapLayer]} detail={selectedLayerDetail} /></div><ActivityVisualization data={data} mode={mode} timeView={timeView} scale={1} /></>}
           </article>
         </section>
 
@@ -118,6 +142,10 @@ export function DashboardPage() {
 function ObservationCard({ mode, value, label, detail }: { mode: DataMode; value: number; label: string; detail: string }) {
   const accent = mode === "harmonized" ? "fire" : mode;
   return <div className={`sensor-card sensor-card--${accent}`}><span>{label}</span><strong>{value.toLocaleString()}</strong><small>{detail}</small></div>;
+}
+
+function RiskCard({ level, value, detail }: { level: "Low" | "Medium" | "High"; value: number; detail: string }) {
+  return <div className={`risk-card risk-card--${level.toLowerCase()}`}><span>{level} risk cells</span><strong>{value.toLocaleString()}</strong><small>{detail}</small></div>;
 }
 
 function Summary({ label, value, detail, accent }: { label: string; value: string; detail: string; accent?: DataMode | "fire" }) {

@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { CircleMarker, MapContainer, Popup, Rectangle, TileLayer, ZoomControl, useMap, useMapEvents } from "react-leaflet";
+import { CircleMarker, GeoJSON, MapContainer, Popup, Rectangle, TileLayer, ZoomControl, useMap, useMapEvents } from "react-leaflet";
 import type { LatLng, LatLngBoundsExpression } from "leaflet";
 
 import type { DashboardData, MapBounds, MapLayer } from "../types/dashboard";
+import type { RiskPrediction } from "../api/fireApi";
 
 import "leaflet/dist/leaflet.css";
 
@@ -14,11 +15,13 @@ const cambodia = { latitude: 12.7, longitude: 105.6 };
 type FireMapProps = {
   hotspots: DashboardData["hotspots"];
   layer: MapLayer;
+  riskPrediction: RiskPrediction | null;
+  showRiskLayer: boolean;
   selectedBounds: MapBounds | null;
   onBoundsChange: (bounds: MapBounds | null) => void;
 };
 
-export function FireMap({ hotspots, layer, selectedBounds, onBoundsChange }: FireMapProps) {
+export function FireMap({ hotspots, layer, riskPrediction, showRiskLayer, selectedBounds, onBoundsChange }: FireMapProps) {
   const [selectingArea, setSelectingArea] = useState(false);
   const visibleEvents = hotspots;
 
@@ -29,16 +32,19 @@ export function FireMap({ hotspots, layer, selectedBounds, onBoundsChange }: Fir
         <ZoomControl position="topleft" />
         <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
         <AreaSelector enabled={selectingArea} selectedBounds={selectedBounds} onBoundsChange={(bounds) => { onBoundsChange(bounds); setSelectingArea(false); }} />
-        {visibleEvents.map((event) => (
+        {showRiskLayer && riskPrediction && <GeoJSON data={riskPrediction as any} style={(feature: any) => ({ color: "#fff", weight: 0.7, fillOpacity: 0.42, fillColor: feature?.properties?.risk_level === "High" ? "#dc2626" : feature?.properties?.risk_level === "Medium" ? "#f97316" : "#facc15" })} onEachFeature={(feature: any, leafletLayer: any) => { const value = feature.properties; leafletLayer.bindPopup(`<strong>${value.risk_level} fire risk</strong><br/>Probability: ${(value.probability * 100).toFixed(1)}%<br/>Forecast horizon: ${value.horizon_days} days<br/>Recent fires (7 days): ${value.fire_count_7d}<br/>Prediction date: ${value.prediction_date}`); }} />}
+        {!showRiskLayer && visibleEvents.map((event) => (
           <CircleMarker key={event.id} center={[event.latitude, event.longitude]} radius={8} pathOptions={{ color: "#fff", fillColor: event.agreement ? agreementColors[event.agreement] : sensorColors[event.sensor], fillOpacity: 1, weight: 2 }}>
             <Popup><strong>{event.agreement ? agreementLabels[event.agreement] : `${event.sensor} observation`}</strong><br />Date: {event.acquisitionDate}<br />{event.detectionCount && <>Detections in event: {event.detectionCount}<br /></>}Confidence: {event.confidence}<br />FRP: {event.frpMw} MW<br />Day/night: {event.daynight === "M" ? "Mixed" : event.daynight === "D" ? "Day" : "Night"}<br />{event.latitude.toFixed(4)}, {event.longitude.toFixed(4)}</Popup>
           </CircleMarker>
         ))}
       </MapContainer>
-      {visibleEvents.length === 0 && <div className="map-no-observations">No observations for these filters</div>}
+      {!showRiskLayer && visibleEvents.length === 0 && <div className="map-no-observations">No observations for these filters</div>}
+      {showRiskLayer && riskPrediction?.features.length === 0 && <div className="map-no-observations">No risk cells in the selected area</div>}
       <div className="map-actions"><button type="button" className={selectingArea ? "is-active" : ""} onClick={() => setSelectingArea((current) => !current)}>{selectingArea ? "Cancel selection" : "Select area"}</button>{selectedBounds && <button type="button" onClick={() => onBoundsChange(null)}>Clear selection</button>}</div>
       <div className="fire-map__meta"><span>Map center: Cambodia</span><span>{selectingArea ? "Drag on the map to select an area" : "Drag to pan; use + / − to zoom"}</span></div>
-      <div className="fire-map__legend">{layer === "events" ? <><span><i className="dot dot--both" /> Both sensors</span><span><i className="dot dot--viirs" /> VIIRS only</span><span><i className="dot dot--modis" /> MODIS only</span></> : layer === "combined" ? <><span><i className="dot dot--modis" /> MODIS observations</span><span><i className="dot dot--viirs" /> VIIRS observations</span></> : <span><i className={layer === "modis" ? "dot dot--modis" : "dot dot--viirs"} /> {layer.toUpperCase()} observations</span>}</div>
+      {!showRiskLayer && <div className="fire-map__legend">{layer === "events" ? <><span><i className="dot dot--both" /> Both sensors</span><span><i className="dot dot--viirs" /> VIIRS only</span><span><i className="dot dot--modis" /> MODIS only</span></> : layer === "combined" ? <><span><i className="dot dot--modis" /> MODIS observations</span><span><i className="dot dot--viirs" /> VIIRS observations</span></> : <span><i className={layer === "modis" ? "dot dot--modis" : "dot dot--viirs"} /> {layer.toUpperCase()} observations</span>}</div>}
+      {showRiskLayer && <div className="fire-map__legend fire-map__legend--risk"><span><i className="dot dot--risk-low" /> Low risk</span><span><i className="dot dot--risk-medium" /> Medium risk</span><span><i className="dot dot--risk-high" /> High risk</span><span>3-day snapshot · 28 Dec 2025</span></div>}
     </div>
   );
 }

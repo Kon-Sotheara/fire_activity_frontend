@@ -1,0 +1,20 @@
+:root {
+  --background: #f8fafc;
+  --card: #ffffff;
+  --primary: #0f766e;
+  --modis: #2563eb;
+  --viirs: #0d9488;
+  --fire: #ea580c;
+  --border: #e2e8f0;
+  --muted: #64748b;
+}
+
+@theme inline {
+  --font-sans: Inter, ui-sans-serif, system-ui, sans-serif;
+  --color-background: var(--background);
+  --color-card: var(--card);
+  --color-brand: var(--primary);
+  --color-modis: var(--modis);
+  --color-viirs: var(--viirs);
+  --color-fire: var(--fire);
+}

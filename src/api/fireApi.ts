@@ -1,17 +1,16 @@
-import type { DashboardData, DataMode, MapBounds } from "../types/dashboard";
+import type { DashboardData, DataMode, MapBounds, MapLayer } from "../types/dashboard";
 
 const apiBase = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000/api";
 
-type Filters = { startDate: string; endDate: string; mode: DataMode; bounds: MapBounds | null };
+type Filters = { startDate: string; endDate: string; mode: DataMode; mapLayer: MapLayer; daynight: "D" | "N" | null; bounds: MapBounds | null };
 type ActivityPoint = { period: string; activity: number };
 type CalendarCell = { year: number; period: number; activity: number };
 
 function searchParams(filters: Filters, includeDates = true) {
   const params = new URLSearchParams({ sensor: filters.mode });
-  if (includeDates) {
-    params.set("start_date", filters.startDate);
-    params.set("end_date", filters.endDate);
-  }
+  if (includeDates && filters.startDate) params.set("start_date", filters.startDate);
+  if (includeDates && filters.endDate) params.set("end_date", filters.endDate);
+  if (filters.daynight) params.set("daynight", filters.daynight);
   if (filters.bounds) {
     params.set("min_lat", String(filters.bounds.minLat));
     params.set("min_lng", String(filters.bounds.minLng));
@@ -34,17 +33,26 @@ function toMonthLabel(period: string) {
 
 export async function loadDashboardData(filters: Filters, selectedArea: string): Promise<DashboardData> {
   const selected = searchParams(filters).toString();
-  const historical = searchParams(filters, false).toString();
-  const [hotspots, summary, trend, calendar, weeklyCalendar, comparison, modisYears, viirsYears, combinedYears] = await Promise.all([
-    getJson<{ total: number; items: Array<{ id: string; latitude: number; longitude: number; sensor: "MODIS" | "VIIRS"; frp: number | null; acq_date: string; acq_time: string | null; confidence: string | null; daynight: "D" | "N" | null }> }>(`/hotspots?${selected}&limit=2000`),
-    getJson<{ total_detections: number; historical_annual_median: number; anomaly_percent: number; anomaly_label: "Low" | "Normal" | "High" }>(`/analytics/summary?${selected}`),
-    getJson<ActivityPoint[]>(`/analytics/trends?${selected}&granularity=month`),
-    getJson<CalendarCell[]>(`/analytics/calendar?${historical}&granularity=month`),
-    getJson<CalendarCell[]>(`/analytics/calendar?${historical}&granularity=week`),
+  const mapParams = searchParams({ ...filters, mode: filters.mapLayer === "combined" || filters.mapLayer === "events" ? "harmonized" : filters.mapLayer, daynight: filters.mapLayer === "events" ? null : filters.daynight }).toString();
+  const eventLayer = filters.mapLayer === "events";
+  const eventSelected = searchParams({ ...filters, daynight: null }).toString();
+  const activitySelected = eventLayer ? eventSelected : selected;
+  const activityPath = eventLayer ? "/analytics/event-trends" : "/analytics/trends";
+  const calendarPath = eventLayer ? "/analytics/event-calendar" : "/analytics/calendar";
+  const mapRequest = eventLayer
+    ? getJson<{ total: number; items: Array<{ id: string; latitude: number; longitude: number; acq_date: string; detection_count: number; modis_detections: number; viirs_detections: number; sensor_agreement: "both" | "modis_only" | "viirs_only"; total_frp: number | null; confidence_score: number | null; daynight: "D" | "N" | "M" | null }> }>(`/events?${mapParams}&limit=2000`)
+    : getJson<{ total: number; items: Array<{ id: string; latitude: number; longitude: number; acq_date: string; acq_time: string | null; sensor: "MODIS" | "VIIRS"; frp: number | null; confidence: string | null; daynight: "D" | "N" | null }> }>(`/hotspots?${mapParams}&limit=2000`);
+  const [mapRecords, summary, trend, calendar, weeklyCalendar, comparison, modisYears, viirsYears, combinedYears, eventYears] = await Promise.all([
+    mapRequest,
+    getJson<{ total_detections: number; historical_annual_median: number; anomaly_percent: number; anomaly_label: "Low" | "Normal" | "High" }>(`/analytics/summary?${activitySelected}&source=${eventLayer ? "events" : "raw"}`),
+    getJson<ActivityPoint[]>(`${activityPath}?${activitySelected}&granularity=month`),
+    getJson<CalendarCell[]>(`${calendarPath}?${activitySelected}&granularity=month`),
+    getJson<CalendarCell[]>(`${calendarPath}?${activitySelected}&granularity=week`),
     getJson<{ modis: number; viirs: number; combined: number }>(`/analytics/compare-sensors?${selected}`),
-    getJson<ActivityPoint[]>(`/analytics/trends?${searchParams({ ...filters, mode: "modis" }, false)}&granularity=year`),
-    getJson<ActivityPoint[]>(`/analytics/trends?${searchParams({ ...filters, mode: "viirs" }, false)}&granularity=year`),
-    getJson<ActivityPoint[]>(`/analytics/trends?${historical}&granularity=year`),
+    getJson<ActivityPoint[]>(`/analytics/trends?${searchParams({ ...filters, mode: "modis" })}&granularity=year`),
+    getJson<ActivityPoint[]>(`/analytics/trends?${searchParams({ ...filters, mode: "viirs" })}&granularity=year`),
+    getJson<ActivityPoint[]>(`/analytics/trends?${selected}&granularity=year`),
+    eventLayer ? getJson<ActivityPoint[]>(`/analytics/event-trends?${eventSelected}&granularity=year`) : Promise.resolve([] as ActivityPoint[]),
   ]);
 
   const years = new Map<number, { modis: number; viirs: number; harmonized: number }>();
@@ -57,6 +65,10 @@ export async function loadDashboardData(filters: Filters, selectedArea: string):
     }
   }
 
+  const rawYearlyActivity = [...years.entries()].sort(([left], [right]) => left - right).map(([year, values]) => ({ year, ...values }));
+  const yearlyActivity = eventLayer
+    ? rawYearlyActivity.map((item) => ({ ...item, harmonized: eventYears.find((point) => Number(point.period) === item.year)?.activity ?? 0 }))
+    : rawYearlyActivity;
   return {
     selectedArea,
     selectedPeriod: `${filters.startDate} to ${filters.endDate}`,
@@ -64,12 +76,15 @@ export async function loadDashboardData(filters: Filters, selectedArea: string):
     trend: trend.map((point) => ({ month: toMonthLabel(point.period), activity: point.activity })),
     calendar: calendar.map((cell) => ({ year: cell.year, month: cell.period, activity: cell.activity })),
     weeklyActivity: weeklyCalendar.map((cell) => ({ year: cell.year, week: cell.period, activity: cell.activity })),
-    hotspots: hotspots.items.map((item) => ({ id: item.id, latitude: item.latitude, longitude: item.longitude, sensor: item.sensor, frpMw: item.frp ?? 0, acquisitionDate: item.acq_date, acquisitionTime: item.acq_time ?? "Unknown", confidence: item.confidence ?? "unknown", daynight: item.daynight ?? "D" })),
-    yearlyActivity: [...years.entries()].sort(([left], [right]) => left - right).map(([year, values]) => ({ year, ...values })),
+    hotspots: eventLayer
+      ? (mapRecords as Awaited<typeof mapRequest>).items.map((item: any) => ({ id: item.id, latitude: item.latitude, longitude: item.longitude, sensor: item.sensor_agreement === "modis_only" ? "MODIS" : "VIIRS", agreement: item.sensor_agreement, detectionCount: item.detection_count, modisDetections: item.modis_detections, viirsDetections: item.viirs_detections, frpMw: item.total_frp ?? 0, acquisitionDate: item.acq_date, acquisitionTime: "Event", confidence: item.confidence_score === null ? "Unknown" : `${Math.round(item.confidence_score)} / 100`, confidenceScore: item.confidence_score ?? undefined, daynight: item.daynight ?? "D" }))
+      : (mapRecords as Awaited<typeof mapRequest>).items.map((item: any) => ({ id: item.id, latitude: item.latitude, longitude: item.longitude, sensor: item.sensor, frpMw: item.frp ?? 0, acquisitionDate: item.acq_date, acquisitionTime: item.acq_time ?? "Unknown", confidence: item.confidence ?? "Unknown", daynight: item.daynight ?? "D" })),
+    yearlyActivity,
+    rawYearlyActivity,
     sensorComparison: comparison,
     alerts: [
       { level: summary.anomaly_label === "High" ? "High" : "Moderate", title: `${summary.anomaly_label} activity`, detail: `${summary.anomaly_percent > 0 ? "+" : ""}${summary.anomaly_percent}% compared with the historical annual median.` },
-      { level: "Moderate", title: `${hotspots.total.toLocaleString()} matching records`, detail: `The map shows the newest ${hotspots.items.length.toLocaleString()} records.` },
+      { level: "Moderate", title: `${mapRecords.total.toLocaleString()} matching ${eventLayer ? "fire events" : "observations"}`, detail: `The map shows the newest ${mapRecords.items.length.toLocaleString()} ${eventLayer ? "harmonized events" : "raw observations"}.` },
     ],
     methodVersion: "PostgreSQL FIRMS source data",
   };

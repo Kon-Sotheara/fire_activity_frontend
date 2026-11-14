@@ -36,6 +36,16 @@ export const dashboardMock: DashboardData = {
     { year: 2025, modis: 490, viirs: 700, harmonized: 920 },
     { year: 2026, modis: 430, viirs: 760, harmonized: 842 },
   ],
+  rawYearlyActivity: [
+    { year: 2019, modis: 820, viirs: 0, harmonized: 820 },
+    { year: 2020, modis: 790, viirs: 270, harmonized: 860 },
+    { year: 2021, modis: 660, viirs: 420, harmonized: 790 },
+    { year: 2022, modis: 710, viirs: 510, harmonized: 910 },
+    { year: 2023, modis: 610, viirs: 570, harmonized: 880 },
+    { year: 2024, modis: 520, viirs: 640, harmonized: 900 },
+    { year: 2025, modis: 490, viirs: 700, harmonized: 920 },
+    { year: 2026, modis: 430, viirs: 760, harmonized: 842 },
+  ],
   sensorComparison: { modis: 430, viirs: 760, combined: 842 },
   alerts: [
     { level: "High", title: "Above normal activity", detail: "This week is 62.5% above the historical median." },

@@ -1,5 +1,6 @@
 export type Sensor = "MODIS" | "VIIRS";
 export type DataMode = "modis" | "viirs" | "harmonized";
+export type MapLayer = "events" | "modis" | "viirs" | "combined";
 export type MapBounds = { minLat: number; minLng: number; maxLat: number; maxLng: number };
 
 export type DashboardData = {
@@ -23,9 +24,15 @@ export type DashboardData = {
     acquisitionDate: string;
     acquisitionTime: string;
     confidence: string;
-    daynight: "D" | "N";
+    daynight: "D" | "N" | "M";
+    agreement?: "both" | "modis_only" | "viirs_only";
+    detectionCount?: number;
+    modisDetections?: number;
+    viirsDetections?: number;
+    confidenceScore?: number;
   }>;
   yearlyActivity: Array<{ year: number; modis: number; viirs: number; harmonized: number }>;
+  rawYearlyActivity: Array<{ year: number; modis: number; viirs: number; harmonized: number }>;
   sensorComparison: { modis: number; viirs: number; combined: number };
   alerts: Array<{ level: "High" | "Moderate"; title: string; detail: string }>;
   methodVersion: string;

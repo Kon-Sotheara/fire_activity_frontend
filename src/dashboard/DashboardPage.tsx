@@ -1,40 +1,39 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { BellRing, CalendarDays, Download, Flame, MapPinned, Search } from "lucide-react";
+import { BellRing, CalendarDays, Download, Flame, MapPinned } from "lucide-react";
 
 import { exportUrl, loadDashboardData } from "../api/fireApi";
 import { dashboardMock } from "../mocks/dashboard";
-import type { DataMode, MapBounds } from "../types/dashboard";
+import type { DataMode, MapBounds, MapLayer } from "../types/dashboard";
 import { ActivityVisualization, HarmonizationEvidenceChart, MonthlyCalendar, RegionalComparisonChart, SameMonthComparison, SeasonalChart } from "./ActivityCharts";
 import { FireMap } from "./FireMap";
 import "./dashboard.css";
 
 const modeLabels: Record<DataMode, string> = { modis: "MODIS", viirs: "VIIRS", harmonized: "Combined" };
+const mapLayerLabels: Record<MapLayer, string> = { events: "Harmonized fire events", modis: "MODIS observations", viirs: "VIIRS observations", combined: "Combined observations" };
 const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
 export function DashboardPage() {
-  const [mode, setMode] = useState<DataMode>("harmonized");
+  const [mapLayer, setMapLayer] = useState<MapLayer>("events");
   const [timeView, setTimeView] = useState<"week" | "year">("week");
   const [analysisView, setAnalysisView] = useState<"month" | "season">("month");
   const [evidenceView, setEvidenceView] = useState<"harmonization" | "regional">("harmonization");
   const [comparisonRegion, setComparisonRegion] = useState("South Sumatra");
-  const [areaInput, setAreaInput] = useState("Cambodia");
-  const [searchRequest, setSearchRequest] = useState("Cambodia");
-  const [selectedArea, setSelectedArea] = useState("Cambodia");
   const [startDate, setStartDate] = useState("2025-01-01");
   const [endDate, setEndDate] = useState("2025-12-31");
+  const [daynight, setDaynight] = useState<"D" | "N" | null>(null);
   const [comparisonMonth, setComparisonMonth] = useState(2);
-  const [bounds, setBounds] = useState<MapBounds | null>({ minLat: 10.4, minLng: 102.3, maxLat: 14.7, maxLng: 107.7 });
-  const [areaMessage, setAreaMessage] = useState("Cambodia boundary applied. Draw two map corners to narrow the area.");
+  const [bounds, setBounds] = useState<MapBounds | null>(null);
   const [data, setData] = useState(dashboardMock);
   const [apiStatus, setApiStatus] = useState<"loading" | "connected" | "error">("loading");
   const [apiError, setApiError] = useState("");
-  const filters = useMemo(() => ({ startDate, endDate, mode, bounds }), [bounds, endDate, mode, startDate]);
+  const mode: DataMode = mapLayer === "modis" ? "modis" : mapLayer === "viirs" ? "viirs" : "harmonized";
+  const filters = useMemo(() => ({ startDate, endDate, mode, mapLayer, daynight, bounds }), [bounds, daynight, endDate, mapLayer, mode, startDate]);
 
   useEffect(() => {
     let cancelled = false;
     setApiStatus("loading");
-    loadDashboardData(filters, selectedArea)
+    loadDashboardData(filters, "Cambodia")
       .then((nextData) => {
         if (!cancelled) {
           setData(nextData);
@@ -49,25 +48,7 @@ export function DashboardPage() {
         }
       });
     return () => { cancelled = true; };
-  }, [filters, selectedArea]);
-
-  const handleSearchResolved = useCallback((label: string, nextBounds?: MapBounds) => {
-    setSelectedArea(label);
-    setBounds(nextBounds ?? null);
-    setAreaMessage(nextBounds ? "Area boundary applied. All visuals now use this area." : "Map center updated. Draw two corners to set the analysis boundary.");
-  }, []);
-
-  function handleAreaChange(message: string, _selectedCount?: number, nextBounds?: MapBounds) {
-    setAreaMessage(message);
-    if (nextBounds) {
-      setSelectedArea("Custom drawn area");
-      setBounds(nextBounds);
-    }
-  }
-
-  function runAreaSearch() {
-    if (areaInput.trim()) setSearchRequest(areaInput);
-  }
+  }, [filters]);
 
   function downloadCsv(kind: "hotspots" | "statistics") {
     window.open(exportUrl(kind, filters), "_blank", "noopener,noreferrer");
@@ -75,6 +56,8 @@ export function DashboardPage() {
 
   const anomalyLabel = data.summary.anomalyLabel;
   const anomalyPercent = data.summary.anomalyPercent;
+  const selectedLayerCount = mapLayer === "events" ? data.summary.harmonizedActivity : mapLayer === "modis" ? data.sensorComparison.modis : mapLayer === "viirs" ? data.sensorComparison.viirs : data.sensorComparison.combined;
+  const selectedLayerDetail = mapLayer === "events" ? "Nearby same-day detections grouped into unique fires" : mapLayer === "modis" ? "1 km sensor · raw observations" : mapLayer === "viirs" ? "375 m sensor · raw observations" : "MODIS + VIIRS · raw observations";
 
   return (
     <main className="dashboard dashboard--compact">
@@ -93,24 +76,24 @@ export function DashboardPage() {
         </div>
         {apiStatus === "error" && <p className="api-error">The dashboard is showing its last result. {apiError}</p>}
 
-        <section className="area-toolbar" aria-label="Area and date filters">
-          <div className="area-search"><label htmlFor="area-search">Choose an area</label><div><Search size={16} /><input id="area-search" value={areaInput} onChange={(event) => setAreaInput(event.target.value)} onKeyDown={(event) => event.key === "Enter" && runAreaSearch()} placeholder="Country, place, or 13.04, 106.45" /><button type="button" onClick={runAreaSearch}>Find</button></div></div>
+        <section className="area-toolbar" aria-label="Fire activity filters">
           <label>From<input type="date" value={startDate} max={endDate} onChange={(event) => setStartDate(event.target.value)} /></label>
           <label>To<input type="date" value={endDate} min={startDate} onChange={(event) => setEndDate(event.target.value)} /></label>
-          <div className="toolbar-total"><span>Selected area</span><strong>{selectedArea}</strong><small>{areaMessage}</small></div>
+          <label>Map layer<select aria-label="Map layer" value={mapLayer} onChange={(event) => setMapLayer(event.target.value as MapLayer)}><option value="events">Harmonized fire events</option><option value="modis">MODIS observations</option><option value="viirs">VIIRS observations</option><option value="combined">Combined observations</option></select></label>
+          <label>Observation time<select aria-label="Observation time" disabled={mapLayer === "events"} value={daynight ?? ""} onChange={(event) => setDaynight(event.target.value === "" ? null : event.target.value as "D" | "N")}><option value="">Day and night</option><option value="D">Day</option><option value="N">Night</option></select></label>
         </section>
 
         <section className="workspace-grid">
-          <article className="panel panel--map"><PanelTitle icon={<MapPinned size={18} />} title="Area and detected hotspots" subtitle="Search a country/place or use coordinates. Select two corners to analyze a smaller area." /><FireMap hotspots={data.hotspots} mode={mode} startDate={startDate} endDate={endDate} searchRequest={searchRequest} onAreaChange={handleAreaChange} onSearchResolved={handleSearchResolved} /></article>
+          <article className="panel panel--map"><PanelTitle icon={<MapPinned size={18} />} title={`Cambodia ${mapLayerLabels[mapLayer]}`} subtitle={mapLayer === "events" ? "One marker represents a clustered same-day fire event. Drag on the map to filter an area." : "One marker represents a raw satellite observation. Drag on the map to filter an area."} /><FireMap hotspots={data.hotspots} layer={mapLayer} selectedBounds={bounds} onBoundsChange={setBounds} /></article>
           <article className="panel fire-activity-panel">
-            <div className="panel__title panel__title--controls"><div><h2><Flame size={18} />Fire activity</h2><p>Switch source views for the same area and period.</p></div><div className="segment-control"><button className={timeView === "week" ? "is-active" : ""} type="button" onClick={() => setTimeView("week")}>Week</button><button className={timeView === "year" ? "is-active" : ""} type="button" onClick={() => setTimeView("year")}>Year</button></div></div>
-            <div className="sensor-comparison"><SensorCard mode="modis" active={mode} value={data.sensorComparison.modis} label="MODIS raw" detail="1 km sensor" onChange={setMode} /><SensorCard mode="viirs" active={mode} value={data.sensorComparison.viirs} label="VIIRS raw" detail="375 m sensor" onChange={setMode} /><SensorCard mode="harmonized" active={mode} value={data.sensorComparison.combined} label="Combined view" detail="MODIS + VIIRS" onChange={setMode} /></div>
+            <div className="panel__title panel__title--controls"><div><h2><Flame size={18} />Fire activity</h2><p>Observation counts for the selected period and area.</p></div><div className="segment-control"><button className={timeView === "week" ? "is-active" : ""} type="button" onClick={() => setTimeView("week")}>Week</button><button className={timeView === "year" ? "is-active" : ""} type="button" onClick={() => setTimeView("year")}>Year</button></div></div>
+            <div className="sensor-comparison"><ObservationCard mode={mode} value={selectedLayerCount} label={mapLayer === "events" ? "Unique fire events" : mapLayerLabels[mapLayer]} detail={selectedLayerDetail} /></div>
             <ActivityVisualization data={data} mode={mode} timeView={timeView} scale={1} />
           </article>
         </section>
 
         <section className="compact-summary" aria-label="Selected area statistics">
-          <Summary label={`${modeLabels[mode]} detections`} value={data.summary.harmonizedActivity.toLocaleString()} detail={`${data.hotspots.length.toLocaleString()} newest map points loaded`} accent={mode} />
+          <Summary label={mapLayerLabels[mapLayer]} value={data.summary.harmonizedActivity.toLocaleString()} detail={`${data.hotspots.length.toLocaleString()} newest map markers loaded`} accent={mode} />
           <Summary label="Historical median" value={data.summary.historicalMedian.toLocaleString()} detail="Annual baseline for this area" />
           <Summary label="Anomaly" value={`${anomalyPercent > 0 ? "+" : ""}${anomalyPercent}%`} detail={`${anomalyLabel}: vs historical median`} accent={anomalyLabel === "High" ? "fire" : anomalyLabel === "Low" ? "modis" : undefined} />
           <Summary label="Alert state" value={anomalyLabel} detail="Low, Normal, or High activity" />
@@ -123,7 +106,7 @@ export function DashboardPage() {
 
         <section className="panel evidence-panel" aria-label="Harmonization and regional comparison evidence">
           <div className="panel__title panel__title--controls"><div><h2><Flame size={18} />Evidence for comparison</h2><p>{evidenceView === "harmonization" ? "Raw source counts for the selected area and period." : "Regional comparison is ready for reference data."}</p></div><div className="segment-control"><button className={evidenceView === "harmonization" ? "is-active" : ""} type="button" onClick={() => setEvidenceView("harmonization")}>Source comparison</button><button className={evidenceView === "regional" ? "is-active" : ""} type="button" onClick={() => setEvidenceView("regional")}>Regions</button></div></div>
-          {evidenceView === "harmonization" ? <div className="evidence-grid"><HarmonizationEvidenceChart comparison={data.sensorComparison} /><div className="explanation-card"><p className="eyebrow">How to read it</p><h3>One area, two source records.</h3><p>MODIS and VIIRS have different spatial resolutions, so their raw counts should not be compared as if they were the same measure.</p><ul><li><span className="legend-dot legend-dot--modis" />MODIS raw: broad, long-running record</li><li><span className="legend-dot legend-dot--viirs" />VIIRS raw: finer, more frequent detections</li><li><span className="legend-dot legend-dot--fire" />Combined: both raw source records</li></ul></div></div> : <div className="evidence-grid"><RegionalComparisonChart region={comparisonRegion} /><div className="explanation-card"><label htmlFor="comparison-region">Compare {selectedArea} with<select id="comparison-region" value={comparisonRegion} onChange={(event) => setComparisonRegion(event.target.value)}><option>South Sumatra</option><option>Central Kalimantan</option><option>Mekong region</option></select></label><h3>Same method, different place.</h3><p>Add the regional reference records to make this comparison live.</p></div></div>}
+          {evidenceView === "harmonization" ? <div className="evidence-grid"><HarmonizationEvidenceChart data={data} /><div className="explanation-card"><p className="eyebrow">How to read it</p><h3>One area, two source records.</h3><p>MODIS and VIIRS have different spatial resolutions, so their raw counts should not be compared as if they were the same measure.</p><ul><li><span className="legend-dot legend-dot--modis" />MODIS raw: broad, long-running record</li><li><span className="legend-dot legend-dot--viirs" />VIIRS raw: finer, more frequent detections</li><li><span className="legend-dot legend-dot--fire" />Combined: both raw source records</li></ul></div></div> : <div className="evidence-grid"><RegionalComparisonChart region={comparisonRegion} /><div className="explanation-card"><label htmlFor="comparison-region">Compare Cambodia with<select id="comparison-region" value={comparisonRegion} onChange={(event) => setComparisonRegion(event.target.value)}><option>South Sumatra</option><option>Central Kalimantan</option><option>Mekong region</option></select></label><h3>Same method, different place.</h3><p>Add the regional reference records to make this comparison live.</p></div></div>}
         </section>
 
         <footer className="method-note"><strong>Method note:</strong> MODIS and VIIRS raw counts are shown separately. The combined view includes both source records; calibrated harmonization will be added as a separate processing layer.</footer>
@@ -132,9 +115,9 @@ export function DashboardPage() {
   );
 }
 
-function SensorCard({ mode, active, value, label, detail, onChange }: { mode: DataMode; active: DataMode; value: number; label: string; detail: string; onChange: (mode: DataMode) => void }) {
+function ObservationCard({ mode, value, label, detail }: { mode: DataMode; value: number; label: string; detail: string }) {
   const accent = mode === "harmonized" ? "fire" : mode;
-  return <button className={`sensor-card sensor-card--${accent} ${active === mode ? "is-selected" : ""}`} type="button" onClick={() => onChange(mode)}><span>{label}</span><strong>{value.toLocaleString()}</strong><small>{detail}</small></button>;
+  return <div className={`sensor-card sensor-card--${accent}`}><span>{label}</span><strong>{value.toLocaleString()}</strong><small>{detail}</small></div>;
 }
 
 function Summary({ label, value, detail, accent }: { label: string; value: string; detail: string; accent?: DataMode | "fire" }) {

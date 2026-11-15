@@ -13,6 +13,7 @@ import "./dashboard.css";
 const modeLabels: Record<DataMode, string> = { modis: "MODIS", viirs: "VIIRS", harmonized: "Combined" };
 const mapLayerLabels: Record<MapLayer, string> = { events: "Harmonized fire events", modis: "MODIS observations", viirs: "VIIRS observations", combined: "Combined observations" };
 const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const DATA_END_DATE = "2025-12-28";
 
 export function DashboardPage() {
   const [mapLayer, setMapLayer] = useState<MapLayer>("events");
@@ -21,7 +22,7 @@ export function DashboardPage() {
   const [evidenceView, setEvidenceView] = useState<"harmonization" | "regional">("harmonization");
   const [comparisonRegion, setComparisonRegion] = useState("South Sumatra");
   const [startDate, setStartDate] = useState("2025-01-01");
-  const [endDate, setEndDate] = useState("2025-12-31");
+  const [endDate, setEndDate] = useState(DATA_END_DATE);
   const [daynight, setDaynight] = useState<"D" | "N" | null>(null);
   const [comparisonMonth, setComparisonMonth] = useState(2);
   const [bounds, setBounds] = useState<MapBounds | null>(null);
@@ -103,7 +104,7 @@ export function DashboardPage() {
 
         <section className="area-toolbar" aria-label="Fire activity filters">
           <label>From<input type="date" value={startDate} max={endDate} onChange={(event) => setStartDate(event.target.value)} /></label>
-          <label>To<input type="date" value={endDate} min={startDate} onChange={(event) => setEndDate(event.target.value)} /></label>
+          <label>To<input type="date" value={endDate} min={startDate} max={DATA_END_DATE} onChange={(event) => setEndDate(event.target.value)} /></label>
           <label>Observation time<select aria-label="Observation time" disabled={mapLayer === "events"} value={daynight ?? ""} onChange={(event) => setDaynight(event.target.value === "" ? null : event.target.value as "D" | "N")}><option value="">Day and night</option><option value="D">Day</option><option value="N">Night</option></select></label>
           <label>Map layer<select aria-label="Map layer" value={mapLayer} onChange={(event) => setMapLayer(event.target.value as MapLayer)}><option value="events">Harmonized fire events</option><option value="modis">MODIS observations</option><option value="viirs">VIIRS observations</option><option value="combined">Combined observations</option></select></label>
           <label>Prediction<select aria-label="Prediction layer" value={showRiskLayer ? "risk" : "off"} onChange={(event) => setShowRiskLayer(event.target.value === "risk")}><option value="off">No prediction layer</option><option value="risk">3-day fire-risk snapshot</option></select></label>

@@ -52,8 +52,8 @@ export async function loadDashboardData(filters: Filters, selectedArea: string):
   const activityPath = eventLayer ? "/analytics/event-trends" : "/analytics/trends";
   const calendarPath = eventLayer ? "/analytics/event-calendar" : "/analytics/calendar";
   const mapRequest = eventLayer
-    ? getJson<{ total: number; items: Array<{ id: string; latitude: number; longitude: number; acq_date: string; detection_count: number; modis_detections: number; viirs_detections: number; sensor_agreement: "both" | "modis_only" | "viirs_only"; total_frp: number | null; confidence_score: number | null; daynight: "D" | "N" | "M" | null }> }>(`/events?${mapParams}&limit=2000`)
-    : getJson<{ total: number; items: Array<{ id: string; latitude: number; longitude: number; acq_date: string; acq_time: string | null; sensor: "MODIS" | "VIIRS"; frp: number | null; confidence: string | null; daynight: "D" | "N" | null }> }>(`/hotspots?${mapParams}&limit=2000`);
+    ? getJson<{ total: number; items: Array<{ id: string; latitude: number; longitude: number; acq_date: string; detection_count: number; modis_detections: number; viirs_detections: number; sensor_agreement: "both" | "modis_only" | "viirs_only"; total_frp: number | null; confidence_score: number | null; daynight: "D" | "N" | "M" | null }> }>(`/events?${mapParams}&limit=750`)
+    : getJson<{ total: number; items: Array<{ id: string; latitude: number; longitude: number; acq_date: string; acq_time: string | null; sensor: "MODIS" | "VIIRS"; frp: number | null; confidence: string | null; daynight: "D" | "N" | null }> }>(`/hotspots?${mapParams}&limit=750`);
   const [mapRecords, summary, trend, calendar, weeklyCalendar, comparison, modisYears, viirsYears, combinedYears, eventYears] = await Promise.all([
     mapRequest,
     getJson<{ total_detections: number; historical_annual_median: number; anomaly_percent: number; anomaly_label: "Low" | "Normal" | "High" }>(`/analytics/summary?${activitySelected}&source=${eventLayer ? "events" : "raw"}`),

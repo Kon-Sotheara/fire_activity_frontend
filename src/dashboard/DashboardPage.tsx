@@ -89,13 +89,13 @@ export function DashboardPage() {
       <header className="dashboard__header">
         <div className="brand"><span><Flame size={18} /></span> Burn Calendar</div>
         <div className="header-actions">
-          <a className="download-button download-button--secondary" href="#/"><ArrowLeft size={15} /> Back to home</a>
           <button className="download-button download-button--secondary" type="button" onClick={() => downloadCsv("statistics")}><Download size={15} /> Statistics</button>
           <button className="download-button" type="button" onClick={() => downloadCsv("hotspots")}><Download size={15} /> Hotspots CSV</button>
         </div>
       </header>
 
       <section className="dashboard__content">
+        <a className="back-home-link" href="#/"><ArrowLeft size={15} /> Back to home</a>
         <div className="compact-intro">
           <div><p className="eyebrow">Historical fire activity</p><h1>Explore MODIS and VIIRS fire records.</h1></div>
           {apiStatus === "loading" && <p className="loading-status" role="status"><LoaderCircle size={15} /> Updating fire data…</p>}

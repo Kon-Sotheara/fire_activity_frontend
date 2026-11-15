@@ -1,6 +1,10 @@
 import type { DashboardData, DataMode, MapBounds, MapLayer } from "../types/dashboard";
 
-const apiBase = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000/api";
+// In production, Vercel proxies /api to Render. This keeps the browser on one
+// origin and avoids CORS errors when Render is starting or temporarily busy.
+const apiBase = import.meta.env.PROD
+  ? "/api"
+  : (import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000/api");
 
 type Filters = { startDate: string; endDate: string; mode: DataMode; mapLayer: MapLayer; daynight: "D" | "N" | null; bounds: MapBounds | null };
 type ActivityPoint = { period: string; activity: number };
@@ -29,9 +33,20 @@ function searchParams(filters: Filters, includeDates = true) {
 }
 
 async function getJson<T>(path: string): Promise<T> {
-  const response = await fetch(`${apiBase}${path}`);
-  if (!response.ok) throw new Error(`API request failed (${response.status})`);
-  return response.json() as Promise<T>;
+  let lastError: Error | undefined;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const response = await fetch(`${apiBase}${path}`);
+      if (response.ok) return response.json() as Promise<T>;
+      // Invalid filters and missing routes will not improve by retrying.
+      if (response.status < 500) throw new Error(`API request failed (${response.status})`);
+      lastError = new Error(`API request failed (${response.status})`);
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error("API request failed");
+    }
+    if (attempt < 2) await new Promise((resolve) => window.setTimeout(resolve, 1_000 * (attempt + 1)));
+  }
+  throw lastError ?? new Error("API request failed");
 }
 
 export function loadRiskPrediction() {

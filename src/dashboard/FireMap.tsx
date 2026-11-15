@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { CircleMarker, GeoJSON, MapContainer, Popup, Rectangle, TileLayer, ZoomControl, useMap, useMapEvents } from "react-leaflet";
+import { LoaderCircle } from "lucide-react";
 import type { LatLng, LatLngBoundsExpression } from "leaflet";
 
 import type { DashboardData, MapBounds, MapLayer } from "../types/dashboard";
@@ -17,11 +18,12 @@ type FireMapProps = {
   layer: MapLayer;
   riskPrediction: RiskPrediction | null;
   showRiskLayer: boolean;
+  isLoading: boolean;
   selectedBounds: MapBounds | null;
   onBoundsChange: (bounds: MapBounds | null) => void;
 };
 
-export function FireMap({ hotspots, layer, riskPrediction, showRiskLayer, selectedBounds, onBoundsChange }: FireMapProps) {
+export function FireMap({ hotspots, layer, riskPrediction, showRiskLayer, isLoading, selectedBounds, onBoundsChange }: FireMapProps) {
   const [selectingArea, setSelectingArea] = useState(false);
   const visibleEvents = hotspots;
 
@@ -39,6 +41,7 @@ export function FireMap({ hotspots, layer, riskPrediction, showRiskLayer, select
           </CircleMarker>
         ))}
       </MapContainer>
+      {isLoading && <div className="map-loading" role="status"><LoaderCircle size={22} /><strong>Loading fire data</strong><span>Updating map, charts, and statistics…</span></div>}
       {!showRiskLayer && visibleEvents.length === 0 && <div className="map-no-observations">No observations for these filters</div>}
       {showRiskLayer && riskPrediction?.features.length === 0 && <div className="map-no-observations">No risk cells in the selected area</div>}
       <div className="map-actions"><button type="button" className={selectingArea ? "is-active" : ""} onClick={() => setSelectingArea((current) => !current)}>{selectingArea ? "Cancel selection" : "Select area"}</button>{selectedBounds && <button type="button" onClick={() => onBoundsChange(null)}>Clear selection</button>}</div>

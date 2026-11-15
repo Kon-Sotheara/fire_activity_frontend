@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { ArrowLeft, BellRing, CalendarDays, Download, Flame, MapPinned } from "lucide-react";
+import { ArrowLeft, BellRing, CalendarDays, Download, Flame, LoaderCircle, MapPinned } from "lucide-react";
 
 import { exportUrl, loadDashboardData, loadRiskPrediction } from "../api/fireApi";
 import type { RiskPrediction } from "../api/fireApi";
@@ -97,6 +97,7 @@ export function DashboardPage() {
       <section className="dashboard__content">
         <div className="compact-intro">
           <div><p className="eyebrow">Historical fire activity</p><h1>Explore MODIS and VIIRS fire records.</h1></div>
+          {apiStatus === "loading" && <p className="loading-status" role="status"><LoaderCircle size={15} /> Updating fire data…</p>}
         </div>
         {apiStatus === "error" && <p className="api-error">The dashboard is showing its last result. {apiError}</p>}
 
@@ -109,7 +110,7 @@ export function DashboardPage() {
         </section>
 
         <section className="workspace-grid">
-          <article className="panel panel--map"><PanelTitle icon={<MapPinned size={18} />} title={showRiskLayer ? "Cambodia predicted fire risk" : `Cambodia ${mapLayerLabels[mapLayer]}`} subtitle={showRiskLayer ? bounds ? "3-day risk grid filtered to the selected map area." : "3-day forecast snapshot shown as 0.1° risk grid cells; raw sensor points are hidden." : mapLayer === "events" ? "One marker represents a clustered same-day fire event. Drag on the map to filter an area." : "One marker represents a raw satellite observation. Drag on the map to filter an area."} /><FireMap hotspots={data.hotspots} layer={mapLayer} riskPrediction={visibleRiskPrediction} showRiskLayer={showRiskLayer} selectedBounds={bounds} onBoundsChange={setBounds} /></article>
+          <article className="panel panel--map"><PanelTitle icon={<MapPinned size={18} />} title={showRiskLayer ? "Cambodia predicted fire risk" : `Cambodia ${mapLayerLabels[mapLayer]}`} subtitle={showRiskLayer ? bounds ? "3-day risk grid filtered to the selected map area." : "3-day forecast snapshot shown as 0.1° risk grid cells; raw sensor points are hidden." : mapLayer === "events" ? "One marker represents a clustered same-day fire event. Drag on the map to filter an area." : "One marker represents a raw satellite observation. Drag on the map to filter an area."} /><FireMap hotspots={data.hotspots} layer={mapLayer} riskPrediction={visibleRiskPrediction} showRiskLayer={showRiskLayer} isLoading={apiStatus === "loading"} selectedBounds={bounds} onBoundsChange={setBounds} /></article>
           <article className="panel fire-activity-panel">
             <div className="panel__title panel__title--controls"><div><h2><Flame size={18} />{showRiskLayer ? "Predicted fire risk" : "Fire activity"}</h2><p>{showRiskLayer ? "Number of 0.1° grid cells by forecast risk level." : "Observation counts for the selected period and area."}</p></div>{!showRiskLayer && <div className="segment-control"><button className={timeView === "week" ? "is-active" : ""} type="button" onClick={() => setTimeView("week")}>Week</button><button className={timeView === "year" ? "is-active" : ""} type="button" onClick={() => setTimeView("year")}>Year</button></div>}</div>
             {showRiskLayer ? <><div className="risk-summary"><RiskCard level="High" value={riskCounts.high} detail={bounds ? "Selected map area" : "Cambodia-wide snapshot"} /><RiskCard level="Medium" value={riskCounts.medium} detail={bounds ? "Selected map area" : "Cambodia-wide snapshot"} /><RiskCard level="Low" value={riskCounts.low} detail={bounds ? "Selected map area" : "Cambodia-wide snapshot"} /></div><div className="risk-chart"><h3>Risk distribution</h3><p>Grid-cell count by forecast level. Hover for average predicted probability.</p><RiskDistributionChart prediction={visibleRiskPrediction} /></div></> : <><div className="sensor-comparison"><ObservationCard mode={mode} value={selectedLayerCount} label={mapLayer === "events" ? "Unique fire events" : mapLayerLabels[mapLayer]} detail={selectedLayerDetail} /></div><ActivityVisualization data={data} mode={mode} timeView={timeView} scale={1} /></>}
